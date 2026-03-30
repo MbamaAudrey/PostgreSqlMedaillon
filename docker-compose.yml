@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  postgres_lakehouse:
+    image: postgres:15-alpine
+    container_name: postgres_lakehouse
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: lakehouse
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d lakehouse" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  superset_lakehouse:
+    image: apache/superset:latest
+    container_name: superset_lakehouse
+    ports:
+      - "8089:8088"
+    user: root
+    environment:
+      - SUPERSET_SECRET_KEY=yoursecretkeyhere
+      - TALISMAN_ENABLED=False
+    volumes:
+      - superset_data:/app/superset_home
+    command: >
+      sh -c "
+      pip install --target=/app/.venv/lib/python3.10/site-packages psycopg2-binary &&
+      /usr/bin/run-server.sh
+      "
+    depends_on:
+      postgres_lakehouse:
+        condition: service_healthy
+
+  airflow_lakehouse:
+    image: apache/airflow:2.10.2-python3.10
+    container_name: airflow_lakehouse
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      - AIRFLOW__WEBSERVER__SECRET_KEY=yoursecretkeyhere
+      - _PIP_ADDITIONAL_DEPENDENCIES=pandas sqlalchemy psycopg2-binary
+      - DATABASE_URL=postgresql://admin:admin@postgres_lakehouse:5432/lakehouse
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./jobs:/opt/airflow/jobs
+      - ./data:/opt/airflow/data
+    command: standalone
+    depends_on:
+      postgres_lakehouse:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  superset_data:
