@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Pentaho — Bronze JSONB → Silver → Gold</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.65; background: #f7f7f5; color: #1a1a1a; }
+.page { max-width: 900px; margin: 0 auto; padding: 32px 24px 80px; }
+
+h1 { font-size: 21px; font-weight: 600; margin-bottom: 4px; }
+.subtitle { color: #666; font-size: 13px; margin-bottom: 24px; }
+h2 { font-size: 16px; font-weight: 600; margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1.5px solid #ddd; }
+h3 { font-size: 14px; font-weight: 600; margin: 18px 0 8px; color: #222; }
+p { color: #444; margin-bottom: 10px; font-size: 13px; }
+code { font-family: 'Menlo','Courier New',monospace; font-size: 11px; background: #ececea; padding: 1px 5px; border-radius: 3px; color: #b03020; }
+ul, ol { padding-left: 18px; color: #444; font-size: 13px; }
+li { margin: 4px 0; }
+
+/* TOC */
+.toc { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 14px 18px; margin-bottom: 28px; }
+.toc-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #999; font-weight: 600; margin-bottom: 8px; }
+.toc a { color: #1a6faf; text-decoration: none; font-size: 13px; }
+.toc a:hover { text-decoration: underline; }
+.toc ol { padding-left: 18px; }
+.toc li { margin: 5px 0; }
+
+/* SECTION */
+.section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 18px 22px; margin: 12px 0; }
+
+/* TAGS */
+.tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px; margin-bottom: 10px; }
+.tag-bronze { background: #fdf3e7; color: #8a4a10; border: 1px solid #d4956a; }
+.tag-silver { background: #f0f4fa; color: #1a4a8a; border: 1px solid #7aade0; }
+.tag-gold   { background: #fefae8; color: #7a6010; border: 1px solid #c9a62a; }
+.tag-step   { background: #f0f0f0; color: #333;    border: 1px solid #ccc; }
+
+/* STEP */
+.step { display: flex; gap: 14px; margin: 12px 0; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
+.step:last-child { border-bottom: none; padding-bottom: 0; }
+.step-num { width: 24px; height: 24px; border-radius: 50%; background: #1a6faf; color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
+.step-body { flex: 1; }
+.step-title { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
+.step-desc { font-size: 13px; color: #555; }
+
+/* DIALOG */
+.dialog { border: 1px solid #bbb; border-radius: 5px; overflow: hidden; margin: 10px 0; font-size: 12px; }
+.dialog-bar { background: #3c6eb4; color: #fff; padding: 5px 12px; font-weight: 600; font-size: 12px; }
+.dialog-body { padding: 12px 16px; background: #fff; }
+.frow { display: flex; align-items: flex-start; gap: 8px; margin: 5px 0; }
+.flabel { width: 210px; flex-shrink: 0; color: #666; font-size: 12px; padding-top: 3px; }
+.fval { flex: 1; background: #f5f5f5; border: 1px solid #ccc; border-radius: 3px; padding: 3px 8px; font-family: monospace; font-size: 12px; color: #1a1a1a; }
+.fval.blue  { background: #eef4fb; border-color: #7aade0; color: #1a4a8a; }
+.fval.green { background: #eef7ee; border-color: #7ac87a; color: #1a5a1a; }
+
+/* TABLE */
+.t { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+.t th { background: #f0f0f0; padding: 5px 10px; text-align: left; border: 1px solid #ccc; font-weight: 600; color: #333; white-space: nowrap; }
+.t td { padding: 5px 10px; border: 1px solid #e0e0e0; color: #333; vertical-align: top; }
+.t tr:nth-child(even) td { background: #fafafa; }
+.t td.mono { font-family: monospace; color: #1a4a8a; font-size: 11px; }
+.t td.ok   { color: #1a7a1a; font-weight: 600; }
+.t td.path { font-family: monospace; font-size: 11px; color: #b03020; }
+.t td.type { font-family: monospace; font-size: 11px; color: #1a6faf; }
+
+/* NOTE */
+.note { border-left: 3px solid #c9a62a; background: #fefae8; padding: 9px 12px; border-radius: 0 4px 4px 0; margin: 10px 0; font-size: 13px; color: #555; }
+.note.info { border-color: #7aade0; background: #f0f4fa; }
+.note.ok   { border-color: #7ac87a; background: #eef7ee; }
+.note b { color: #1a1a1a; }
+
+/* SQL */
+.sql { background: #1e1e1e; color: #d4d4d4; border-radius: 5px; padding: 14px 16px; font-family: 'Menlo','Courier New',monospace; font-size: 12px; line-height: 1.9; margin: 10px 0; overflow-x: auto; }
+.sql .kw  { color: #569cd6; }
+.sql .fn  { color: #dcdcaa; }
+.sql .str { color: #ce9178; }
+.sql .cmt { color: #6a9955; }
+.sql .sc  { color: #4ec9b0; }
+.sql .op  { color: #b8d7a3; }
+
+/* FLOW */
+.flow-canvas { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 18px; margin: 12px 0; overflow-x: auto; }
+.flow { display: flex; align-items: center; gap: 0; }
+.fbox { border: 1.5px solid #7aade0; background: #f0f4fa; border-radius: 5px; padding: 7px 11px; text-align: center; min-width: 95px; font-size: 11px; flex-shrink: 0; }
+.fbox b { display: block; font-size: 11px; font-weight: 600; }
+.fbox small { color: #777; font-size: 10px; }
+.fbox.out { border-color: #c9a62a; background: #fefae8; }
+.fbox.err { border-color: #d07070; background: #fdecea; }
+.fbox.start { border-color: #aaa; background: #f0f0f0; }
+.farrow { padding: 0 4px; color: #bbb; font-size: 14px; flex-shrink: 0; }
+
+/* ARCH */
+.arch { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; margin: 16px 0; gap: 0; }
+.arch-col { border: 1px solid #ccc; border-radius: 4px; padding: 12px 14px; font-size: 12px; }
+.arch-col.bronze { background: #fdf3e7; border-color: #d4956a; }
+.arch-col.silver { background: #f0f4fa; border-color: #7aade0; }
+.arch-col.gold   { background: #fefae8; border-color: #c9a62a; }
+.arch-arr { display: flex; align-items: center; padding: 0 6px; color: #aaa; font-size: 18px; }
+.arch-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.arch-sub  { font-size: 11px; color: #666; }
+
+/* ENDPOINT BADGE */
+.ep { display: inline-block; background: #1e1e2e; color: #ce9178; font-family: monospace; font-size: 11px; padding: 2px 8px; border-radius: 3px; margin: 2px 0; }
+
+hr { border: none; border-top: 1px solid #e5e5e5; margin: 28px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Pentaho — Bronze JSONB → Silver → Gold</h1>
+<div class="subtitle">PostgreSQL · Table bronze avec champs <code>endpoint</code> et <code>data JSONB</code> · 5 endpoints · Modèle étoile</div>
+
+<div class="toc">
+  <div class="toc-label">Sommaire</div>
+  <ol>
+    <li><a href="#structure">Structure de la table Bronze et les 5 endpoints</a></li>
+    <li><a href="#principe">Principe : extraction JSONB dans Pentaho</a></li>
+    <li><a href="#clients">Transformation — Clients → silver.clients</a></li>
+    <li><a href="#comptes">Transformation — Comptes courants → silver.comptes</a></li>
+    <li><a href="#virements">Transformation — Virements → silver.virements</a></li>
+    <li><a href="#prets">Transformation — Prêts → silver.prets</a></li>
+    <li><a href="#depots">Transformation — Dépôts → silver.depots</a></li>
+    <li><a href="#gold-dims">Transformations Silver → Gold : dimensions</a></li>
+    <li><a href="#gold-faits">Transformation Silver → Gold : table de faits</a></li>
+    <li><a href="#job">Job d'orchestration</a></li>
+  </ol>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="structure">1. Structure de la table Bronze et les 5 endpoints</h2>
+
+<div class="section">
+  <p>Votre table bronze a deux colonnes. La colonne <code>endpoint</code> identifie le type de donnée, la colonne <code>data</code> contient le JSON brut :</p>
+
+  <div class="sql">
+<span class="kw">CREATE TABLE</span> <span class="sc">bronze</span>.raw_data (
+  id              <span class="fn">SERIAL</span> <span class="kw">PRIMARY KEY</span>,
+  endpoint        <span class="fn">VARCHAR</span>(200),   <span class="cmt">-- identifie le type de données</span>
+  data            <span class="fn">JSONB</span>,           <span class="cmt">-- contenu brut</span>
+  loaded_at       <span class="fn">TIMESTAMP</span> <span class="kw">DEFAULT</span> <span class="fn">NOW</span>()
+);
+  </div>
+
+  <p>Les cinq valeurs possibles du champ <code>endpoint</code> :</p>
+  <table class="t">
+    <tr><th>endpoint (valeur exacte)</th><th>Contenu</th><th>Clé principale</th></tr>
+    <tr><td class="path">v5.8.0/party/customers</td><td>Clients</td><td><code>header.id</code></td></tr>
+    <tr><td class="path">v9.4.0/holdings/accounts/currentAccounts</td><td>Comptes courants</td><td><code>header.id</code> = numéro de compte</td></tr>
+    <tr><td class="path">v1.0.1/order/transfers</td><td>Virements</td><td><code>header.id</code> = ID transaction</td></tr>
+    <tr><td class="path">v9.0.0/loans</td><td>Prêts</td><td><code>$.id</code></td></tr>
+    <tr><td class="path">v10.0.0/deposits</td><td>Dépôts</td><td><code>$.id</code></td></tr>
+  </table>
+
+  <div class="note info">
+    <b>Principe de filtrage :</b> chaque Transformation commence par un <b>Entrée de table</b> qui filtre sur <code>endpoint = 'valeur_exacte'</code>. Vous obtenez ainsi un flux de lignes contenant uniquement les enregistrements du bon type. Ensuite vous extrayez les champs JSONB avec le step <b>Valeur JSON</b>.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="principe">2. Principe : extraction JSONB dans Pentaho</h2>
+
+<div class="section">
+  <p>Pour extraire des champs d'une colonne JSONB, vous avez deux approches. Voici laquelle choisir selon le cas :</p>
+
+  <table class="t">
+    <tr><th>Approche</th><th>Comment</th><th>Quand l'utiliser</th></tr>
+    <tr>
+      <td><b>Option A — SQL PostgreSQL</b></td>
+      <td>Extraire directement dans le SQL du step "Entrée de table" avec les opérateurs <code>->></code> et <code>-></code> de PostgreSQL</td>
+      <td><b>Recommandé</b> — plus simple, plus rapide, PostgreSQL fait le travail</td>
+    </tr>
+    <tr>
+      <td><b>Option B — Step "Valeur JSON"</b></td>
+      <td>Pentaho lit la colonne JSONB comme texte, puis le step "Valeur JSON" (catégorie : Transformation) extrait les champs via JSONPath</td>
+      <td>Utile si le SQL devient trop complexe (tableaux imbriqués, structures variables)</td>
+    </tr>
+  </table>
+
+  <div class="note ok">
+    <b>On utilise l'Option A (SQL) dans ce guide.</b> C'est la plus simple : vous écrivez le SQL d'extraction dans le step "Entrée de table", et Pentaho reçoit directement des colonnes typées — pas de JSON à parser dans Pentaho.
+  </div>
+
+  <p style="margin-top:10px;">Rappel des opérateurs PostgreSQL JSONB :</p>
+  <table class="t">
+    <tr><th>Opérateur</th><th>Résultat</th><th>Exemple</th></tr>
+    <tr><td class="mono">-></td><td>Retourne un objet JSONB</td><td><code>data -> 'body'</code></td></tr>
+    <tr><td class="mono">->></td><td>Retourne du texte (pour extraire une valeur finale)</td><td><code>data ->> 'status'</code></td></tr>
+    <tr><td class="mono">-> 'key' ->> 'key2'</td><td>Navigue dans les niveaux imbriqués</td><td><code>data -> 'header' ->> 'id'</code></td></tr>
+    <tr><td class="mono">-> 'arr' -> 0 ->> 'key'</td><td>Accède à l'index 0 d'un tableau</td><td><code>data -> 'body' -> 'displayNames' -> 0 ->> 'displayName'</code></td></tr>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="clients">3. Clients → silver.clients</h2>
+
+<p>Fichier : <code>transfo_bronze_clients_to_silver.ktr</code></p>
+
+<div class="flow-canvas">
+  <div class="flow">
+    <div class="fbox start"><b>Entrée de table</b><small>bronze — clients</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Filtre de lignes</b><small>status = success</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Sélection de valeurs</b><small>typage colonnes</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox out"><b>Insertion / MAJ</b><small>silver.clients</small></div>
+  </div>
+</div>
+
+<h3>Step 1 — Entrée de table (extraction JSONB via SQL)</h3>
+<div class="section">
+  <span class="tag tag-bronze">Catégorie : Entrée → "Entrée de table"</span>
+
+  <div class="dialog">
+    <div class="dialog-bar">Entrée de table</div>
+    <div class="dialog-body">
+      <div class="frow"><div class="flabel">Connexion</div><div class="fval blue">PG_DWH</div></div>
+      <div class="frow"><div class="flabel">SQL</div><div class="fval" style="font-style:italic; color:#888;">voir ci-dessous</div></div>
+    </div>
+  </div>
+
+  <div class="sql">
+<span class="kw">SELECT</span>
+  data <span class="op">-></span> <span class="str">'header'</span> <span class="op">->></span> <span class="str">'id'</span>                                    <span class="kw">AS</span> id_client,
+  data <span class="op">-></span> <span class="str">'header'</span> <span class="op">->></span> <span class="str">'status'</span>                               <span class="kw">AS</span> statut,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">-></span> <span class="str">'displayNames'</span> <span class="op">-></span> 0 <span class="op">->></span> <span class="str">'displayName'</span>   <span class="kw">AS</span> nom_complet,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'customerMnemonic'</span>                     <span class="kw">AS</span> mnemonique,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'nationalityId'</span>                        <span class="kw">AS</span> code_nationalite,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'gender'</span>                               <span class="kw">AS</span> genre,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'dateOfBirth'</span>                          <span class="kw">AS</span> date_naissance_raw,
+  loaded_at
+<span class="kw">FROM</span> <span class="sc">bronze</span>.raw_data
+<span class="kw">WHERE</span> endpoint = <span class="str">'v5.8.0/party/customers'</span>
+  </div>
+
+  <div class="note">
+    <b>date_naissance_raw :</b> le champ <code>dateOfBirth</code> est au format <code>19900101</code> (texte). Vous le convertirez en type Date dans le step suivant.
+  </div>
+</div>
+
+<h3>Step 2 — Filtre de lignes (garder uniquement status = success)</h3>
+<div class="section">
+  <span class="tag tag-step">Catégorie : Flux → "Filtre de lignes"</span>
+  <div class="dialog">
+    <div class="dialog-bar">Filtre de lignes</div>
+    <div class="dialog-body">
+      <div style="background:#f5f5f5; border:1px solid #ccc; border-radius:4px; padding:8px 12px; font-family:monospace; font-size:12px;">
+        <span style="color:#1a6faf;">statut</span>
+        <span style="background:#e0e8f5; padding:1px 6px; border-radius:2px;">=</span>
+        <span style="color:#1a7a1a;">'success'</span>
+        &nbsp;<span style="color:#888;">ET</span>&nbsp;
+        <span style="color:#1a6faf;">id_client</span>
+        <span style="background:#e0e8f5; padding:1px 6px; border-radius:2px;">IS NOT NULL</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Step 3 — Sélection de valeurs (conversions de types)</h3>
+<div class="section">
+  <span class="tag tag-step">Catégorie : Transformation → "Sélection de valeurs" — onglet Métadonnées</span>
+
+  <table class="t">
+    <tr><th>Champ</th><th>Type cible</th><th>Format</th><th>Commentaire</th></tr>
+    <tr><td>id_client</td><td class="type">String</td><td>—</td><td>Garder en texte (peut contenir des lettres)</td></tr>
+    <tr><td>nom_complet</td><td class="type">String</td><td>—</td><td>—</td></tr>
+    <tr><td>mnemonique</td><td class="type">String</td><td>—</td><td>—</td></tr>
+    <tr><td>code_nationalite</td><td class="type">String</td><td>—</td><td>—</td></tr>
+    <tr><td>genre</td><td class="type">String</td><td>—</td><td>MALE / FEMALE</td></tr>
+    <tr><td>date_naissance_raw</td><td class="type">Date</td><td>yyyyMMdd</td><td>Format T24 : 19900101 → Date</td></tr>
+  </table>
+
+  <div class="note info">
+    <b>Renommer dans ce même onglet :</b> renommez <code>date_naissance_raw</code> en <code>date_naissance</code> dans la colonne "Renommer en" du même onglet Métadonnées.
+  </div>
+</div>
+
+<h3>Step 4 — Insertion / Mise à jour dans silver.clients</h3>
+<div class="section">
+  <span class="tag tag-silver">Catégorie : Sortie → "Insertion / Mise à jour"</span>
+  <div class="dialog">
+    <div class="dialog-bar">Insertion / Mise à jour — silver.clients</div>
+    <div class="dialog-body">
+      <div class="frow"><div class="flabel">Connexion</div><div class="fval blue">PG_DWH</div></div>
+      <div class="frow"><div class="flabel">Schéma cible</div><div class="fval blue">silver</div></div>
+      <div class="frow"><div class="flabel">Table cible</div><div class="fval">clients</div></div>
+      <div class="frow"><div class="flabel">Taille du commit</div><div class="fval">500</div></div>
+      <div style="margin:10px 0 5px; font-size:12px; font-weight:600;">Clé de recherche :</div>
+      <table class="t">
+        <tr><th>Champ table</th><th>Comparateur</th><th>Champ flux</th></tr>
+        <tr><td>id_client</td><td class="mono">=</td><td>id_client</td></tr>
+      </table>
+      <div style="margin:10px 0 5px; font-size:12px; font-weight:600;">Champs à mettre à jour :</div>
+      <table class="t">
+        <tr><th>Champ table</th><th>Champ flux</th><th>MAJ</th></tr>
+        <tr><td>nom_complet</td><td>nom_complet</td><td class="ok">Oui</td></tr>
+        <tr><td>mnemonique</td><td>mnemonique</td><td class="ok">Oui</td></tr>
+        <tr><td>code_nationalite</td><td>code_nationalite</td><td class="ok">Oui</td></tr>
+        <tr><td>genre</td><td>genre</td><td class="ok">Oui</td></tr>
+        <tr><td>date_naissance</td><td>date_naissance</td><td class="ok">Oui</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="comptes">4. Comptes courants → silver.comptes</h2>
+
+<p>Fichier : <code>transfo_bronze_comptes_to_silver.ktr</code></p>
+
+<div class="flow-canvas">
+  <div class="flow">
+    <div class="fbox start"><b>Entrée de table</b><small>bronze — comptes</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Filtre de lignes</b><small>solde not null</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Sélection de valeurs</b><small>typage</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox out"><b>Insertion / MAJ</b><small>silver.comptes</small></div>
+  </div>
+</div>
+
+<h3>Step 1 — Entrée de table</h3>
+<div class="section">
+  <span class="tag tag-bronze">Catégorie : Entrée → "Entrée de table"</span>
+
+  <div class="sql">
+<span class="kw">SELECT</span>
+  data <span class="op">-></span> <span class="str">'header'</span> <span class="op">->></span> <span class="str">'id'</span>                                           <span class="kw">AS</span> numero_compte,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">-></span> <span class="str">'arrangementActivity'</span> <span class="op">->></span> <span class="str">'productId'</span>       <span class="kw">AS</span> code_produit,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">-></span> <span class="str">'arrangementActivity'</span> <span class="op">->></span> <span class="str">'currency'</span>        <span class="kw">AS</span> devise,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">-></span> <span class="str">'arrangementActivity'</span>
+       <span class="op">-></span> <span class="str">'partyIds'</span> <span class="op">-></span> 0 <span class="op">->></span> <span class="str">'partyId'</span>                             <span class="kw">AS</span> id_client,
+  (<span class="kw">data</span> <span class="op">-></span> <span class="str">'body'</span> <span class="op">-></span> <span class="str">'balance'</span> <span class="op">->></span> <span class="str">'onlineClearedBalance'</span>)::<span class="fn">NUMERIC</span>  <span class="kw">AS</span> solde,
+  loaded_at
+<span class="kw">FROM</span> <span class="sc">bronze</span>.raw_data
+<span class="kw">WHERE</span> endpoint = <span class="str">'v9.4.0/holdings/accounts/currentAccounts'</span>
+  </div>
+
+  <div class="note">
+    <b>Cast du solde :</b> <code>onlineClearedBalance</code> arrive en texte depuis JSONB. Le cast <code>::NUMERIC</code> directement dans le SQL évite d'avoir à gérer la conversion dans Pentaho.
+  </div>
+</div>
+
+<h3>Step 2 — Filtre + Sélection de valeurs</h3>
+<div class="section">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div>
+      <div class="tag tag-step" style="margin-bottom:8px;">Filtre de lignes</div>
+      <div style="background:#f5f5f5; border:1px solid #ccc; border-radius:4px; padding:8px 12px; font-family:monospace; font-size:12px;">
+        <span style="color:#1a6faf;">numero_compte</span> <span style="background:#e0e8f5;padding:1px 5px;border-radius:2px;">IS NOT NULL</span><br>
+        <span style="color:#888;">ET</span> <span style="color:#1a6faf;">id_client</span> <span style="background:#e0e8f5;padding:1px 5px;border-radius:2px;">IS NOT NULL</span>
+      </div>
+    </div>
+    <div>
+      <div class="tag tag-step" style="margin-bottom:8px;">Sélection de valeurs — Métadonnées</div>
+      <table class="t">
+        <tr><th>Champ</th><th>Type</th></tr>
+        <tr><td>numero_compte</td><td class="type">String</td></tr>
+        <tr><td>code_produit</td><td class="type">String</td></tr>
+        <tr><td>devise</td><td class="type">String</td></tr>
+        <tr><td>id_client</td><td class="type">String</td></tr>
+        <tr><td>solde</td><td class="type">BigNumber</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="virements">5. Virements → silver.virements</h2>
+
+<p>Fichier : <code>transfo_bronze_virements_to_silver.ktr</code></p>
+
+<h3>Step 1 — Entrée de table</h3>
+<div class="section">
+  <span class="tag tag-bronze">Catégorie : Entrée → "Entrée de table"</span>
+
+  <div class="sql">
+<span class="kw">SELECT</span>
+  data <span class="op">-></span> <span class="str">'header'</span> <span class="op">->></span> <span class="str">'id'</span>                        <span class="kw">AS</span> id_transaction,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'debitAccountId'</span>            <span class="kw">AS</span> compte_debit,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'creditAccountId'</span>           <span class="kw">AS</span> compte_credit,
+  (data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'debitAmount'</span>)::<span class="fn">NUMERIC</span>   <span class="kw">AS</span> montant,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'debitCurrency'</span>             <span class="kw">AS</span> devise,
+  data <span class="op">-></span> <span class="str">'body'</span> <span class="op">->></span> <span class="str">'transactionDate'</span>           <span class="kw">AS</span> date_transaction_raw,
+  loaded_at
+<span class="kw">FROM</span> <span class="sc">bronze</span>.raw_data
+<span class="kw">WHERE</span> endpoint = <span class="str">'v1.0.1/order/transfers'</span>
+  </div>
+</div>
+
+<h3>Step 2 — Sélection de valeurs (conversion date YYYYMMDD)</h3>
+<div class="section">
+  <span class="tag tag-step">Catégorie : Transformation → "Sélection de valeurs" — onglet Métadonnées</span>
+
+  <table class="t">
+    <tr><th>Champ</th><th>Renommer en</th><th>Type cible</th><th>Format</th></tr>
+    <tr><td>id_transaction</td><td>—</td><td class="type">String</td><td>—</td></tr>
+    <tr><td>compte_debit</td><td>—</td><td class="type">String</td><td>—</td></tr>
+    <tr><td>compte_credit</td><td>—</td><td class="type">String</td><td>—</td></tr>
+    <tr><td>montant</td><td>—</td><td class="type">BigNumber</td><td>#.00</td></tr>
+    <tr><td>devise</td><td>—</td><td class="type">String</td><td>—</td></tr>
+    <tr><td>date_transaction_raw</td><td>date_transaction</td><td class="type">Date</td><td>yyyyMMdd</td></tr>
+  </table>
+
+  <div class="note info">
+    <b>Format yyyyMMdd :</b> c'est exactement le format T24 de <code>transactionDate</code>. Pentaho convertira <code>20240115</code> en <code>2024-01-15</code> automatiquement avec ce format.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="prets">6. Prêts → silver.prets</h2>
+
+<p>Fichier : <code>transfo_bronze_prets_to_silver.ktr</code></p>
+
+<div class="section">
+  <span class="tag tag-bronze">Structure différente — champs à la racine du JSON (pas de header/body)</span>
+
+  <div class="sql">
+<span class="kw">SELECT</span>
+  data <span class="op">->></span> <span class="str">'id'</span>                <span class="kw">AS</span> id_pret,
+  data <span class="op">->></span> <span class="str">'status'</span>           <span class="kw">AS</span> statut,
+  data <span class="op">->></span> <span class="str">'transactionStatus'</span> <span class="kw">AS</span> statut_transaction,
+  loaded_at
+<span class="kw">FROM</span> <span class="sc">bronze</span>.raw_data
+<span class="kw">WHERE</span> endpoint = <span class="str">'v9.0.0/loans'</span>
+  <span class="kw">AND</span> data <span class="op">->></span> <span class="str">'status'</span> = <span class="str">'success'</span>
+  <span class="kw">AND</span> data <span class="op">->></span> <span class="str">'transactionStatus'</span> = <span class="str">'Live'</span>
+  </div>
+
+  <div class="note info">
+    Pour les prêts, les champs sont directement à la racine du JSON (<code>$.id</code>, <code>$.status</code>) — pas de niveau <code>header</code> ou <code>body</code>. On utilise donc <code>data ->>'id'</code> directement, sans navigation imbriquée.
+  </div>
+
+  <p>Suite identique aux autres : <b>Filtre de lignes</b> sur <code>id_pret IS NOT NULL</code>, puis <b>Insertion / Mise à jour</b> dans <code>silver.prets</code> avec <code>id_pret</code> comme clé.</p>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="depots">7. Dépôts → silver.depots</h2>
+
+<p>Fichier : <code>transfo_bronze_depots_to_silver.ktr</code></p>
+
+<div class="section">
+  <span class="tag tag-bronze">Structure identique aux prêts — champs à la racine</span>
+
+  <div class="sql">
+<span class="kw">SELECT</span>
+  data <span class="op">->></span> <span class="str">'id'</span>      <span class="kw">AS</span> id_depot,
+  data <span class="op">->></span> <span class="str">'status'</span> <span class="kw">AS</span> statut,
+  loaded_at
+<span class="kw">FROM</span> <span class="sc">bronze</span>.raw_data
+<span class="kw">WHERE</span> endpoint = <span class="str">'v10.0.0/deposits'</span>
+  <span class="kw">AND</span> data <span class="op">->></span> <span class="str">'status'</span> = <span class="str">'success'</span>
+  </div>
+
+  <div class="note">
+    <b>Données minimales :</b> les dépôts n'ont que <code>id</code> et <code>status</code> dans la documentation actuelle. Si votre JSONB réel contient plus de champs, ajoutez-les dans le SELECT avec la même syntaxe <code>data ->>'champ'</code>.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="gold-dims">8. Silver → Gold : les dimensions</h2>
+
+<p>Une fois le Silver chargé, vous construisez le modèle étoile. Voici les dimensions à créer et leur source Silver.</p>
+
+<table class="t" style="margin-bottom:16px;">
+  <tr><th>Table Gold</th><th>Source Silver</th><th>Clé de substitution</th><th>Clé source</th></tr>
+  <tr><td><code>gold.dim_client</code></td><td><code>silver.clients</code></td><td>id_dim_client (SERIAL)</td><td>id_client</td></tr>
+  <tr><td><code>gold.dim_compte</code></td><td><code>silver.comptes</code></td><td>id_dim_compte (SERIAL)</td><td>numero_compte</td></tr>
+  <tr><td><code>gold.dim_produit</code></td><td><code>silver.comptes</code> (DISTINCT code_produit)</td><td>id_dim_produit (SERIAL)</td><td>code_produit</td></tr>
+  <tr><td><code>gold.dim_devise</code></td><td><code>silver.virements</code> (DISTINCT devise)</td><td>id_dim_devise (SERIAL)</td><td>devise</td></tr>
+  <tr><td><code>gold.dim_date</code></td><td>SQL generate_series PostgreSQL</td><td>id_date (YYYYMMDD)</td><td>—</td></tr>
+</table>
+
+<h3>Schéma type d'une transformation Silver → dimension Gold</h3>
+<p>Le schéma est identique pour toutes les dimensions. Exemple avec <code>dim_client</code> :</p>
+
+<div class="flow-canvas">
+  <div class="flow">
+    <div class="fbox start"><b>Entrée de table</b><small>silver.clients</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Tri de lignes</b><small>id_client ASC</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Dédoublonnage</b><small>id_client</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox out"><b>Insertion / MAJ</b><small>gold.dim_client</small></div>
+  </div>
+</div>
+
+<div class="section">
+  <span class="tag tag-silver">Entrée de table — silver.clients</span>
+
+  <div class="sql">
+<span class="kw">SELECT</span>
+  id_client,
+  nom_complet,
+  mnemonique,
+  code_nationalite,
+  genre,
+  date_naissance
+<span class="kw">FROM</span> <span class="sc">silver</span>.clients
+  </div>
+
+  <div class="dialog" style="margin-top:12px;">
+    <div class="dialog-bar">Insertion / Mise à jour — gold.dim_client</div>
+    <div class="dialog-body">
+      <div class="frow"><div class="flabel">Schéma cible</div><div class="fval blue">gold</div></div>
+      <div class="frow"><div class="flabel">Table cible</div><div class="fval">dim_client</div></div>
+      <div style="margin:10px 0 5px; font-size:12px; font-weight:600;">Clé de recherche :</div>
+      <table class="t">
+        <tr><th>Champ table</th><th>Comparateur</th><th>Champ flux</th></tr>
+        <tr><td>id_client_source</td><td class="mono">=</td><td>id_client</td></tr>
+      </table>
+      <div style="margin:10px 0 5px; font-size:12px; font-weight:600;">Champs à mettre à jour :</div>
+      <table class="t">
+        <tr><th>Champ table (gold)</th><th>Champ flux (silver)</th><th>MAJ</th></tr>
+        <tr><td>id_client_source</td><td>id_client</td><td class="ok">Oui</td></tr>
+        <tr><td>nom_complet</td><td>nom_complet</td><td class="ok">Oui</td></tr>
+        <tr><td>mnemonique</td><td>mnemonique</td><td class="ok">Oui</td></tr>
+        <tr><td>code_nationalite</td><td>code_nationalite</td><td class="ok">Oui</td></tr>
+        <tr><td>genre</td><td>genre</td><td class="ok">Oui</td></tr>
+        <tr><td>date_naissance</td><td>date_naissance</td><td class="ok">Oui</td></tr>
+      </table>
+      <div style="margin-top:8px; font-size:12px; color:#666;">La colonne <code>id_dim_client SERIAL</code> est gérée par PostgreSQL — ne l'incluez pas dans le mapping Pentaho.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="gold-faits">9. Silver → Gold : table de faits (virements)</h2>
+
+<p>Fichier : <code>transfo_silver_to_gold_fact_virements.ktr</code></p>
+
+<p>La table de faits centrale est alimentée depuis <code>silver.virements</code>. Elle doit résoudre les clés techniques de toutes les dimensions.</p>
+
+<div class="flow-canvas">
+  <div class="flow">
+    <div class="fbox start"><b>Entrée de table</b><small>silver.virements</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Recherche DB</b><small>gold.dim_compte (débit)</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Recherche DB</b><small>gold.dim_compte (crédit)</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Recherche DB</b><small>gold.dim_devise</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Calculateur</b><small>fk_date</small></div>
+    <div class="farrow">→</div>
+    <div class="fbox out"><b>Insertion / MAJ</b><small>gold.fact_virements</small></div>
+  </div>
+</div>
+
+<h3>Step 1 — Entrée de table depuis Silver</h3>
+<div class="section">
+  <div class="sql">
+<span class="kw">SELECT</span>
+  id_transaction,
+  compte_debit,
+  compte_credit,
+  montant,
+  devise,
+  date_transaction
+<span class="kw">FROM</span> <span class="sc">silver</span>.virements
+  </div>
+</div>
+
+<h3>Steps 2 et 3 — Résolution des clés techniques des comptes</h3>
+<div class="section">
+  <span class="tag tag-step">Catégorie : Recherche → "Recherche dans une base de données" × 2</span>
+
+  <p>Le compte débit et le compte crédit sont deux colonnes différentes mais pointent vers la même table <code>gold.dim_compte</code>. Il faut donc deux steps de recherche distincts :</p>
+
+  <div class="dialog">
+    <div class="dialog-bar">Recherche DB — fk_compte_debit</div>
+    <div class="dialog-body">
+      <div class="frow"><div class="flabel">Connexion</div><div class="fval blue">PG_DWH</div></div>
+      <div class="frow"><div class="flabel">Schéma / Table</div><div class="fval blue">gold.dim_compte</div></div>
+      <div class="frow"><div class="flabel">Activer le cache</div><div class="fval green">Oui</div></div>
+      <div style="margin:8px 0 4px; font-size:12px; font-weight:600;">Clé :</div>
+      <table class="t">
+        <tr><th>Champ flux</th><th>=</th><th>Champ table</th></tr>
+        <tr><td>compte_debit</td><td class="mono">=</td><td>numero_compte_source</td></tr>
+      </table>
+      <div style="margin:8px 0 4px; font-size:12px; font-weight:600;">Retourner :</div>
+      <table class="t">
+        <tr><th>Champ table</th><th>Renommer en</th></tr>
+        <tr><td>id_dim_compte</td><td>fk_compte_debit</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="dialog" style="margin-top:10px;">
+    <div class="dialog-bar">Recherche DB — fk_compte_credit (même config, champ différent)</div>
+    <div class="dialog-body">
+      <table class="t">
+        <tr><th>Champ flux</th><th>=</th><th>Champ table</th><th>Retourner</th><th>Renommer en</th></tr>
+        <tr><td>compte_credit</td><td class="mono">=</td><td>numero_compte_source</td><td>id_dim_compte</td><td>fk_compte_credit</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<h3>Step 4 — Calculateur (générer fk_date)</h3>
+<div class="section">
+  <span class="tag tag-step">Catégorie : Transformation → "Calculateur"</span>
+
+  <table class="t">
+    <tr><th>Nouveau champ</th><th>Calcul</th><th>Champ A</th><th>Type</th></tr>
+    <tr><td>fk_date</td><td class="mono">Entier de date (AAAAMMJJ)</td><td>date_transaction</td><td>Integer</td></tr>
+  </table>
+
+  <div class="note info">Ce calcul transforme la date <code>2024-01-15</code> en entier <code>20240115</code>, qui correspond à la clé primaire <code>id_date</code> de la table <code>gold.dim_date</code>.</div>
+</div>
+
+<h3>Step 5 — Insertion / Mise à jour dans gold.fact_virements</h3>
+<div class="section">
+  <span class="tag tag-gold">Catégorie : Sortie → "Insertion / Mise à jour"</span>
+
+  <div class="dialog">
+    <div class="dialog-bar">Insertion / Mise à jour — gold.fact_virements</div>
+    <div class="dialog-body">
+      <div class="frow"><div class="flabel">Schéma / Table</div><div class="fval blue">gold.fact_virements</div></div>
+      <div class="frow"><div class="flabel">Taille du commit</div><div class="fval">1000</div></div>
+      <div style="margin:8px 0 4px; font-size:12px; font-weight:600;">Clé de recherche :</div>
+      <table class="t">
+        <tr><th>Champ table</th><th>=</th><th>Champ flux</th></tr>
+        <tr><td>id_transaction_source</td><td class="mono">=</td><td>id_transaction</td></tr>
+      </table>
+      <div style="margin:8px 0 4px; font-size:12px; font-weight:600;">Champs à mettre à jour :</div>
+      <table class="t">
+        <tr><th>Champ table (gold)</th><th>Champ flux</th><th>MAJ</th></tr>
+        <tr><td>fk_compte_debit</td><td>fk_compte_debit</td><td class="ok">Oui</td></tr>
+        <tr><td>fk_compte_credit</td><td>fk_compte_credit</td><td class="ok">Oui</td></tr>
+        <tr><td>fk_devise</td><td>fk_devise</td><td class="ok">Oui</td></tr>
+        <tr><td>fk_date</td><td>fk_date</td><td class="ok">Oui</td></tr>
+        <tr><td>montant</td><td>montant</td><td class="ok">Oui</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ -->
+<h2 id="job">10. Job d'orchestration complet</h2>
+
+<p>Fichier : <code>job_pipeline_complet.kjb</code></p>
+
+<p>Ordre strict à respecter : toutes les Bronze→Silver d'abord, puis les dimensions Gold, puis les faits.</p>
+
+<div class="flow-canvas">
+  <div style="display:flex; flex-direction:column; gap:10px;">
+    <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Phase 1 — Bronze → Silver (peuvent être parallélisées)</div>
+    <div class="flow" style="flex-wrap:wrap; gap:6px;">
+      <div class="fbox start" style="min-width:80px;"><b>DEBUT</b></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>bronze → silver clients</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>bronze → silver comptes</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>bronze → silver virements</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>bronze → silver prêts</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>bronze → silver dépôts</small></div>
+    </div>
+    <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:8px;">Phase 2 — Silver → Gold dimensions</div>
+    <div class="flow" style="flex-wrap:wrap; gap:6px;">
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>→ dim_client</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>→ dim_compte</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>→ dim_produit</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>→ dim_devise</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox" style="min-width:110px;"><b>Transfo</b><small>→ dim_date</small></div>
+    </div>
+    <div style="font-size:11px; color:#888; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-top:8px;">Phase 3 — Silver → Gold faits</div>
+    <div class="flow" style="flex-wrap:wrap; gap:6px;">
+      <div class="fbox" style="min-width:130px;"><b>Transfo</b><small>→ fact_virements</small></div>
+      <div class="farrow">→</div>
+      <div class="fbox out" style="min-width:80px;"><b>FIN SUCCES</b></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Récapitulatif des fichiers .ktr à créer</h3>
+  <table class="t">
+    <tr><th>#</th><th>Fichier .ktr</th><th>Lit</th><th>Écrit</th></tr>
+    <tr><td>1</td><td><code>bronze_clients_to_silver.ktr</code></td><td>bronze (endpoint clients)</td><td>silver.clients</td></tr>
+    <tr><td>2</td><td><code>bronze_comptes_to_silver.ktr</code></td><td>bronze (endpoint comptes)</td><td>silver.comptes</td></tr>
+    <tr><td>3</td><td><code>bronze_virements_to_silver.ktr</code></td><td>bronze (endpoint virements)</td><td>silver.virements</td></tr>
+    <tr><td>4</td><td><code>bronze_prets_to_silver.ktr</code></td><td>bronze (endpoint prêts)</td><td>silver.prets</td></tr>
+    <tr><td>5</td><td><code>bronze_depots_to_silver.ktr</code></td><td>bronze (endpoint dépôts)</td><td>silver.depots</td></tr>
+    <tr><td>6</td><td><code>silver_to_gold_dim_client.ktr</code></td><td>silver.clients</td><td>gold.dim_client</td></tr>
+    <tr><td>7</td><td><code>silver_to_gold_dim_compte.ktr</code></td><td>silver.comptes</td><td>gold.dim_compte</td></tr>
+    <tr><td>8</td><td><code>silver_to_gold_dim_produit.ktr</code></td><td>silver.comptes (DISTINCT)</td><td>gold.dim_produit</td></tr>
+    <tr><td>9</td><td><code>silver_to_gold_dim_devise.ktr</code></td><td>silver.virements (DISTINCT)</td><td>gold.dim_devise</td></tr>
+    <tr><td>10</td><td><code>silver_to_gold_dim_date.ktr</code></td><td>generate_series PostgreSQL</td><td>gold.dim_date</td></tr>
+    <tr><td>11</td><td><code>silver_to_gold_fact_virements.ktr</code></td><td>silver.virements + lookups Gold</td><td>gold.fact_virements</td></tr>
+  </table>
+
+  <div class="note ok" style="margin-top:12px;">
+    <b>Règle absolue :</b> les transformations 6 à 10 (dimensions) doivent être terminées avant de lancer la 11 (faits). Dans le Job, connectez-les en séquence avec des flèches vertes (succès).
+  </div>
+</div>
+
+</div>
+</body>
+</html>
